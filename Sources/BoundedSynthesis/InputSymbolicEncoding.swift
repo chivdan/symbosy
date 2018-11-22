@@ -45,7 +45,7 @@ public class InputSymbolicEncoding: BoSyEncoding {
             let exists = states.map({ target in tau(source, target)})
                                .reduce(Literal.False, |)
             matrix.append(exists)
-            
+           
             let renamer = RenamingBooleanVisitor(rename: { name in self.specification.outputs.contains(name) ? self.output(name, forState: source) : name })
             
             for q in automaton.states {
@@ -71,6 +71,78 @@ public class InputSymbolicEncoding: BoSyEncoding {
                 matrix.append(lambda(source, q) --> conjunct.reduce(Literal.True, &))
             }
         }
+
+        for source in states {
+            for dest in states {
+                matrix.append( tau(source, dest) --> y(source, dest))
+            }
+        }
+
+        var K = 5
+        if K > bound*bound {
+            K = bound*bound
+        } 
+ 
+        if bound > 1 {     
+            for j in 0..<(bound*bound) {
+                matrix.append(ntr(j, 0))
+            } 
+
+            for source in states {
+                for dest in states {
+                    if source == 0 && dest == 0 {
+                        matrix.append((y(0, 0)) --> ntr(0, 1))
+                        matrix.append((!y(0, 0)) --> ntr(0, 0))
+                        continue
+                    } 
+                    for j in 0..<(bound*bound - 1) {
+                        matrix.append((y(source, dest) & ntr(source * bound + dest - 1, j)) --> ntr(source * bound + dest, j + 1))
+                    }
+
+                    for j in 0..<(bound*bound) {
+                        matrix.append((!y(source, dest) & ntr(source * bound + dest - 1, j)) --> ntr(source * bound + dest, j))
+                    }
+                }
+            } 
+
+            for j in 0..<(bound*bound) {
+                for k in K..<(bound*bound) {
+                    matrix.append(!ntr(j, k))
+                }
+            }
+        }
+        
+
+       // if false {
+            for dest in states {
+                for parent in 0..<dest {
+                    var disjunction: [Logic] = []
+                    disjunction.append(y(parent, dest))
+                    for tmp in 0..<parent {
+                        disjunction.append(!y(tmp, dest))
+                    }
+                    matrix.append(p(dest, parent) --> disjunction.reduce(Literal.True, &))
+                    matrix.append(disjunction.reduce(Literal.True, &) --> p(dest, parent))
+                }
+
+                if (dest > 0) {
+                    var conjuction: [Logic] = []
+                    for parent in 0..<dest {
+                        conjuction.append(p(dest, parent))
+                    }
+                    matrix.append(conjuction.reduce(Literal.False, |))
+                }
+
+                if (dest < states.count - 1) {
+                    for parent in 0..<dest {
+                        for parent2 in 0..<parent {
+                            matrix.append(p(dest, parent) --> (!p(dest + 1, parent2)))
+                        }
+                    }
+                }
+            }
+       // }
+
         
         let formula: Logic = matrix.reduce(Literal.True, &)
         
@@ -96,6 +168,35 @@ public class InputSymbolicEncoding: BoSyEncoding {
                 outputPropositions.append(Proposition(output(o, forState: s)))
             }
         }
+
+        var ps: [Proposition] = []
+        for s in states {
+            for q in 0..<s {
+                ps.append(p(s, q))
+            }
+        }
+
+        var yps: [Proposition] = []
+        for s in 0..<bound {
+            yps += (0..<bound).map({ sPrime in y(s, sPrime) })
+        }
+
+//        var yms: [Proposition] = []
+ //       for s in 0..<bound {
+   //         yms += (0..<bound).map({ sPrime in yminus(s, sPrime) })
+     //   }
+
+        var ntrs : [Proposition] = []
+        for j in 0..<(bound*bound) {
+            for source in states {
+                for dest in states {
+                     ntrs.append(ntr(source * bound + dest, j))
+                }
+            }
+        }
+
+
+
         let inputPropositions: [Proposition] = specification.inputs.map({ input in Proposition(input) })
         
         let innerExistentials: [Proposition]
@@ -103,11 +204,11 @@ public class InputSymbolicEncoding: BoSyEncoding {
         
         switch specification.semantics {
         case .mealy:
-            innerExistentials = taus + outputPropositions
-            outerExistentials = lambdas + lambdaSharps
+            innerExistentials = taus + outputPropositions// + ps + yps + yms
+            outerExistentials = lambdas + lambdaSharps + ps + yps + ntrs
         case .moore:
-            innerExistentials = taus
-            outerExistentials = lambdas + lambdaSharps + outputPropositions
+            innerExistentials = taus// + ps + yps + yms
+            outerExistentials = lambdas + lambdaSharps + outputPropositions + ps + yps + ntrs
         }
         
         var qbf: Logic = Quantifier(.Exists, variables: innerExistentials, scope: formula)
@@ -146,7 +247,7 @@ public class InputSymbolicEncoding: BoSyEncoding {
     }
     
     func tauNextStateAssertion(state: Int, nextState: Int, bound: Int) -> Logic {
-        return tau(state, nextState)
+        return tau(state, nextState) & y(state, nextState)
     }
     
     func lambda(_ state: Int, _ automatonState: CoBüchiAutomaton.State) -> Proposition {
@@ -164,6 +265,26 @@ public class InputSymbolicEncoding: BoSyEncoding {
     func output(_ name: String, forState state: Int) -> String {
         return "\(name)_\(state)"
     }
+
+    func p(_ childState: Int, _ parentState: Int) -> Proposition {
+        return Proposition("p_\(childState)_\(parentState)")
+    }
+
+
+    func y(_ fromState: Int, _ toState: Int) -> Proposition {
+        return Proposition("yp_\(fromState)_\(toState)")
+    }
+
+    func yminus(_ fromState: Int, _ toState: Int) -> Proposition {
+        return Proposition("ym_\(fromState)_\(toState)")
+    }
+
+    func ntr(_ id: Int, _ num: Int) -> Proposition {
+        return Proposition("ntr_\(id)_\(num)")
+    }
+
+
+
     
     public func solve(forBound bound: Int) throws -> Bool {
         Logger.default().info("build encoding for bound \(bound)")
@@ -285,6 +406,9 @@ public class InputSymbolicEncoding: BoSyEncoding {
         for source in 0..<solutionBound {
             for target in 0..<solutionBound {
                 let transition = functions[tau(source, target)]!
+                let tr_ex = functions[y(source, target)]!
+                print(source,"-> ",target," : ",tr_ex)
+
                 if transition as? Literal != nil && transition as! Literal == Literal.False {
                     continue
                 }
@@ -296,7 +420,14 @@ public class InputSymbolicEncoding: BoSyEncoding {
                 solution.add(output: output, inState: source, withGuard: enabled)
             }
         }
+
+       // for source in 0..<solutionBound {
+      //      for dest in 0..<solutionBound {
+     //       
+     //       }
+     //   }
+
         extractionTimer?.stop()
         return solution
-    }
+   }
 }
