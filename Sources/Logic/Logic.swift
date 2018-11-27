@@ -206,6 +206,7 @@ public struct UnaryOperator: Logic, Equatable {
     }
     
     public func accept<T>(visitor: T) -> T.T where T: BooleanVisitor {
+     //   print ("UnaryOperator: \(operand)")
         return visitor.visit(unaryOperator: self)
     }
     
@@ -288,11 +289,15 @@ public struct BinaryOperator: Logic, Hashable {
     }
     
     public func accept<T>(visitor: T) -> T.T where T: BooleanVisitor {
+     //   print ("BinaryOperator : \(operands[0].description.count) \(operands[1].description.count)")
         return visitor.visit(binaryOperator: self)
     }
     
     public var description: String {
+   //     print("BinaryOperator : description")
+ //       return "(\(operands[0]) \(type) \(operands[1]))"
         let expression = operands.map({ op in "\(op)" }).joined(separator: " \(type) ")
+     //   print("\(expression)")
         return "(\(expression))"
     }
     
@@ -391,7 +396,8 @@ public struct BinaryOperator: Logic, Hashable {
             assert(newOperands.count == 2)
             return BinaryOperator(type, operands: newOperands)
         }
-    }
+    
+    } 
 }
 
 public func ==(_ lhs: BinaryOperator, _ rhs: BinaryOperator) -> Bool {
@@ -428,12 +434,20 @@ public struct Quantifier: Logic {
     }
     
     public func accept<T>(visitor: T) -> T.T where T : BooleanVisitor {
+        print("Calling Quantifier.visit")
         return visitor.visit(quantifier: self)
     }
     
     public var description: String {
+        print ("Constructing string")
         let variables = self.variables.map({ variable in "\(variable)" }).joined(separator: ", ")
-        return "\(type) \(variables): \(scope)"
+        print ("Constructed variables")
+      //  print ("type: \(type)")
+   //     print ("variables: \(variables)")
+   //     print ("scope: \(scope)")
+        let result = "\(type) \(variables): \(scope)"
+        print ("Constructed string")
+        return result
     }
     
     public var hashValue: Int {

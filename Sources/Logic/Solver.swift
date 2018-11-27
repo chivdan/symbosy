@@ -265,10 +265,13 @@ struct CryptoMiniSat: SatSolver {
 
 struct RAReQS: QbfSolver {
     func solve(formula: Logic, preprocessor: QbfPreprocessor?) -> SatSolverResult? {
+        print("RAReQS : start")
         // encode formula
         let qdimacsVisitor = QDIMACSVisitor(formula: formula)
+        print("created QDIMACSVisitor")
         var encodedFormula = qdimacsVisitor.description
         
+        print("RAReQS : encoding formula")
         if let preprocessor = preprocessor {
             guard let preprocessedFormula = preprocessor.preprocess(qbf: encodedFormula) else {
                 return nil
@@ -306,10 +309,14 @@ struct RAReQS: QbfSolver {
 
 struct DepQBF: QbfSolver {
     func solve(formula: Logic, preprocessor: QbfPreprocessor?) -> SatSolverResult? {
+        print("DepQBF : start")
+
         // encode formula
         let qdimacsVisitor = QDIMACSVisitor(formula: formula)
         var encodedFormula = qdimacsVisitor.description
         
+        print("DepQBF : encoding formula")
+
         if let preprocessor = preprocessor {
             guard let preprocessedFormula = preprocessor.preprocess(qbf: encodedFormula) else {
                 return nil

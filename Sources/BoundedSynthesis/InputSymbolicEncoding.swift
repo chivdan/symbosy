@@ -71,80 +71,87 @@ public class InputSymbolicEncoding: BoSyEncoding {
                 matrix.append(lambda(source, q) --> conjunct.reduce(Literal.True, &))
             }
         }
-
+       
         for source in states {
             for dest in states {
                 matrix.append( tau(source, dest) --> y(source, dest))
             }
         }
 
-        var K = 5
+        var K = 8 
         if K > bound*bound {
             K = bound*bound
         } 
  
         if bound > 1 {     
-            for j in 0..<(bound*bound) {
-                matrix.append(ntr(j, 0))
+            for i in 0..<(bound*bound) {
+                matrix.append(ntr(i, 0))
             } 
 
             for source in states {
                 for dest in states {
                     if source == 0 && dest == 0 {
                         matrix.append((y(0, 0)) --> ntr(0, 1))
-                        matrix.append((!y(0, 0)) --> ntr(0, 0))
-                        continue
-                    } 
-                    for j in 0..<(bound*bound - 1) {
-                        matrix.append((y(source, dest) & ntr(source * bound + dest - 1, j)) --> ntr(source * bound + dest, j + 1))
-                    }
+                    } else { 
+                        for j in 0..<(bound*bound) {
+                            matrix.append(!y(source, dest) | !ntr(source * bound + dest - 1, j) | ntr(source * bound + dest, j + 1))
+                        }
 
-                    for j in 0..<(bound*bound) {
-                        matrix.append((!y(source, dest) & ntr(source * bound + dest - 1, j)) --> ntr(source * bound + dest, j))
+                        for j in 0...(bound*bound) {
+                            matrix.append(y(source, dest) | !ntr(source * bound + dest - 1, j) | ntr(source * bound + dest, j))
+                        }
                     }
                 }
             } 
 
             for j in 0..<(bound*bound) {
-                for k in K..<(bound*bound) {
+                for k in K...(bound*bound) {
                     matrix.append(!ntr(j, k))
                 }
             }
         }
-        
+       
+ 
 
-       // if false {
-            for dest in states {
+        for dest in states {
+            for parent in 0..<dest {
+                var disjunction: [Logic] = []
+                disjunction.append(y(parent, dest))
+                for tmp in 0..<parent {
+                    disjunction.append(!y(tmp, dest))
+                }
+                matrix.append(p(dest, parent) --> disjunction.reduce(Literal.True, &))
+                matrix.append(disjunction.reduce(Literal.True, &) --> p(dest, parent))
+            }
+
+            if (dest > 0) {
+                var conjuction: [Logic] = []
                 for parent in 0..<dest {
-                    var disjunction: [Logic] = []
-                    disjunction.append(y(parent, dest))
-                    for tmp in 0..<parent {
-                        disjunction.append(!y(tmp, dest))
-                    }
-                    matrix.append(p(dest, parent) --> disjunction.reduce(Literal.True, &))
-                    matrix.append(disjunction.reduce(Literal.True, &) --> p(dest, parent))
+                    conjuction.append(p(dest, parent))
                 }
+                matrix.append(conjuction.reduce(Literal.False, |))
+            }
 
-                if (dest > 0) {
-                    var conjuction: [Logic] = []
-                    for parent in 0..<dest {
-                        conjuction.append(p(dest, parent))
-                    }
-                    matrix.append(conjuction.reduce(Literal.False, |))
-                }
-
-                if (dest < states.count - 1) {
-                    for parent in 0..<dest {
-                        for parent2 in 0..<parent {
-                            matrix.append(p(dest, parent) --> (!p(dest + 1, parent2)))
-                        }
+            if (dest < states.count - 1) {
+                for parent in 0..<dest {
+                    for parent2 in 0..<parent {
+                        matrix.append(p(dest, parent) --> (!p(dest + 1, parent2)))
                     }
                 }
             }
-       // }
+        }
 
-        
         let formula: Logic = matrix.reduce(Literal.True, &)
+/*        var formula : Logic = Literal.True
+        print ("Printing formula")
+        var i : Int = 0
+        for v in matrix {
+            print("Adding formula \(i)/\(matrix.count)")
+            formula = formula & v
+            //print("which is \(v):")
+            i = i + 1
+        } 
+ */
         
         var lambdas: [Proposition] = []
         for s in 0..<bound {
@@ -181,20 +188,14 @@ public class InputSymbolicEncoding: BoSyEncoding {
             yps += (0..<bound).map({ sPrime in y(s, sPrime) })
         }
 
-//        var yms: [Proposition] = []
- //       for s in 0..<bound {
-   //         yms += (0..<bound).map({ sPrime in yminus(s, sPrime) })
-     //   }
-
         var ntrs : [Proposition] = []
-        for j in 0..<(bound*bound) {
-            for source in states {
-                for dest in states {
+        for source in states {
+            for dest in states {
+                for j in 0...(bound*bound) {
                      ntrs.append(ntr(source * bound + dest, j))
                 }
             }
         }
-
 
 
         let inputPropositions: [Proposition] = specification.inputs.map({ input in Proposition(input) })
@@ -204,27 +205,40 @@ public class InputSymbolicEncoding: BoSyEncoding {
         
         switch specification.semantics {
         case .mealy:
-            innerExistentials = taus + outputPropositions// + ps + yps + yms
+            innerExistentials = taus + outputPropositions
             outerExistentials = lambdas + lambdaSharps + ps + yps + ntrs
         case .moore:
-            innerExistentials = taus// + ps + yps + yms
+            innerExistentials = taus
             outerExistentials = lambdas + lambdaSharps + outputPropositions + ps + yps + ntrs
         }
         
+        print ("Constructing qbf")
         var qbf: Logic = Quantifier(.Exists, variables: innerExistentials, scope: formula)
         qbf = Quantifier(.Forall, variables: inputPropositions, scope: qbf)
         qbf = Quantifier(.Exists, variables: outerExistentials, scope: qbf)
         
         qbf = qbf.eval(assignment: initialAssignment)
+       
+       
+       
+        print("Constucted preliminary qbf of length \(qbf.description.count)")
+      //  print(qbf)
+      //  print("printed qbf")
+
         
-        //print(qbf)
         
+        print("Running BoundednessVisitor")
         let boundednessCheck = BoundednessVisitor()
         assert(qbf.accept(visitor: boundednessCheck))
+
         
+        print ("Running RemoveComparableVisitor")
         let removeComparable = RemoveComparableVisitor(bound: bound)
         qbf = qbf.accept(visitor: removeComparable)
         
+        print("Constructed final QBF with length \(qbf.description.count)")
+        exit(0)
+
         return qbf
     }
     
@@ -247,7 +261,7 @@ public class InputSymbolicEncoding: BoSyEncoding {
     }
     
     func tauNextStateAssertion(state: Int, nextState: Int, bound: Int) -> Logic {
-        return tau(state, nextState) & y(state, nextState)
+        return tau(state, nextState)// & y(state, nextState)
     }
     
     func lambda(_ state: Int, _ automatonState: CoBüchiAutomaton.State) -> Proposition {
@@ -272,7 +286,7 @@ public class InputSymbolicEncoding: BoSyEncoding {
 
 
     func y(_ fromState: Int, _ toState: Int) -> Proposition {
-        return Proposition("yp_\(fromState)_\(toState)")
+        return Proposition("y_\(fromState)_\(toState)")
     }
 
     func yminus(_ fromState: Int, _ toState: Int) -> Proposition {
@@ -280,7 +294,7 @@ public class InputSymbolicEncoding: BoSyEncoding {
     }
 
     func ntr(_ id: Int, _ num: Int) -> Proposition {
-        return Proposition("ntr_\(id)_\(num)")
+        return Proposition("n_\(id)_\(num)")
     }
 
 
@@ -293,22 +307,32 @@ public class InputSymbolicEncoding: BoSyEncoding {
         guard let instance = getEncoding(forBound: bound) else {
             throw BoSyEncodingError.EncodingFailed("could not build encoding")
         }
+        print ("Constructed instance")
         constraintTimer?.stop()
         //print(instance)
         
         guard let solver = options.solver?.instance as? QbfSolver else {
             throw BoSyEncodingError.SolvingFailed("solver creation failed")
         }
+        print ("Constructed solver")
+
         
         let solvingTimer = options.statistics?.startTimer(phase: .solving)
         guard let preprocessorName = options.qbfPreprocessor else {
             throw BoSyEncodingError.SolvingFailed("no preprocessor selected")
         }
+        print ("Constructed preprocessor")
+  
         let preprocessor: QbfPreprocessor = preprocessorName.getInstance(preserveAssignments: self.synthesize)
+        print ("Constructed preprocessor, solving")
+
         guard let result = solver.solve(formula: instance, preprocessor: preprocessor) else {
             throw BoSyEncodingError.SolvingFailed("solver failed on instance")
         }
+
         solvingTimer?.stop()
+
+        print("Solved")
         
         if case .sat(var assignments) = result {
             // keep top level valuations of solver

@@ -14,11 +14,15 @@ public class RemoveComparableVisitor: TransformingVisitor {
     }
     
     public override func visit(quantifier: Quantifier) -> T {
+        print("visit quantifier - start")
         var copy = quantifier
         copy.scope = quantifier.scope.accept(visitor: self)
+        print("visit quantifier - middle")
         copy.variables = copy.variables.reduce([], {
             variables, variable in variables + (reverseMapping[variable] ?? [variable])
         })
+        print("visit quantifier - done")
+
         return copy
     }
     public override func visit(comparator: BooleanComparator) -> T {
@@ -43,6 +47,7 @@ public class RemoveComparableVisitor: TransformingVisitor {
             return Proposition("error")
         }
         
+        print("visit comparator - start") 
         let lhsProp = getProposition(comparator.lhs)
         if reverseMapping[lhsProp] == nil {
             reverseMapping[lhsProp] = (0..<counterBits).map({ i in Proposition("\(lhsProp)_\(i)")})
@@ -55,6 +60,7 @@ public class RemoveComparableVisitor: TransformingVisitor {
         
         let lhs = (0..<counterBits).map({ bit in translateToBitRepresentation(comparator.lhs, bit: bit) })
         let rhs = (0..<counterBits).map({ bit in translateToBitRepresentation(comparator.rhs, bit: bit) })
+        print("visit comparator - done")
         return order(binaryLhs: lhs, binaryRhs: rhs, strict: comparator.type == .Less)
     }
 }
@@ -129,6 +135,7 @@ public class DIMACSVisitor: ReturnConstantVisitor<Int>, CustomStringConvertible 
         super.init(constant: 0)
         let _ = formula.accept(visitor: self)
         // let nnf = NegationNormalFormVisitor(formula: qbf).result
+        print("Created visitor")
     }
     
     public var description: String {
@@ -219,23 +226,33 @@ public class QDIMACSVisitor: DIMACSVisitor {
     var quantifiers: [String] = []
     
     public override var description: String {
+        print("Trying to print formula")
         let symboltable = propositions.map({
             (proposition, literal) in
             "c \(proposition) \(literal)\n"
         }).joined(separator: "")
+        print("Constructed symbol table")
         let header = "p cnf \(currentId) \(self.dimacs.count + 1)\n"
+        print("Constructing dimacs")
         let dimacs = self.dimacs.map({ $0 + " 0\n" }).joined(separator: "")
+        print("Constructed dimacs")
         var quants = quantifiers
+        print("Constructing quants")
         quants.append("e " + tseitinVariables.map(String.init).joined(separator: " ") + " 0")
+        print("Constructed quants")
+
         assert(output != nil)
         return symboltable + header + quants.joined(separator: "\n") + "\n" + dimacs + "\(output!) 0\n"
     }
 
     public override func visit(quantifier: Quantifier) -> T {
+        print("Started visiting")
         quantifier.variables.forEach({ variable in propositions[variable] = newId() })
         let variables = quantifier.variables.flatMap({ variable in propositions[variable] })
         quantifiers.append((quantifier.type == .Exists ? "e " : "a ") + variables.map(String.init).joined(separator: " ") + " 0")
+        print("Calling scope.accept")
         let result = quantifier.scope.accept(visitor: self)
+        print("Got scope.accept result")
         if result != 0 {
             assert(output == nil)
             // top level scope
@@ -245,6 +262,7 @@ public class QDIMACSVisitor: DIMACSVisitor {
     }
     
     public func translate(certificate: UnsafeMutablePointer<aiger>) -> [Proposition:Logic] {
+        print("Started translating")
         var translated: [Proposition:Logic] = [:]
         var reversed: [Int:Proposition] = [:]
         for (proposition, literal) in propositions {
